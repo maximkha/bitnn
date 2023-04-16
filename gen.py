@@ -5,12 +5,19 @@
 DO_TRAIN = True
 DO_TEST = True
 DO_DEBUG = False
+PERF_MODE = True
+
+# NO_BIT_RECALC = False
+NO_BIT_RECALC = True
+
+if NO_BIT_RECALC: print("// WARNING!!! YOU WILL NEED TO RECOMPILE 'bitnn.cpp' WITH '#define UPDATE_IN_BACKW'")
 
 topo = [2, 8, 8, 1]
 
 xs = [[0,0],[0,1],[1,0],[1,1]]
 
 ys = [[0], [1], [1], [0]]
+# N_EPOCH = 50_000_000
 N_EPOCH = 500
 
 # GENERATOR
@@ -65,11 +72,14 @@ for i in range(len(topo) - 1):
     runnn_signature_cpp += f"std::bitset<{in_size}> lin{i}_w_bits[{out_size}], std::bitset<{out_size}> lin{i}_b_bits, "
     runnn_call_signature_cpp += f"lin{i}_w_bits, lin{i}_b_bits, "
 
-    backw_signature_cpp += f"int8_t lin{i}_w[{out_size}][{in_size}], int8_t lin{i}_b[{out_size}], "
-    backw_call_signature_cpp += f"lin{i}_w, lin{i}_b, "
+    if NO_BIT_RECALC: backw_signature_cpp += f"int8_t lin{i}_w[{out_size}][{in_size}], int8_t lin{i}_b[{out_size}], std::bitset<{in_size}> lin{i}_w_bits[{out_size}], std::bitset<{out_size}>& lin{i}_b_bits, "
+    else: backw_signature_cpp += f"int8_t lin{i}_w[{out_size}][{in_size}], int8_t lin{i}_b[{out_size}], "
+
+    if NO_BIT_RECALC: backw_call_signature_cpp += f"lin{i}_w, lin{i}_b, lin{i}_w_bits, lin{i}_b_bits, "
+    else: backw_call_signature_cpp += f"lin{i}_w, lin{i}_b, "
 
     # this will be reversed so do this backwards
-    backw_cpp_items.append(f"\tbackwardBitStepMVBias<{in_size}, {out_size}>(lin{i}_w_bits, {layer_in}, {layer_grad_in}_zero, {layer_grad_in}_sign, lin{i}_w, lin{i}_b, {layer_grad_out}_zero, {layer_grad_out}_sign);\n")
+    backw_cpp_items.append(f"\tbackwardBitStepMVBias<{in_size}, {out_size}>(lin{i}_w_bits, lin{i}_b_bits, {layer_in}, {layer_grad_in}_zero, {layer_grad_in}_sign, lin{i}_w, lin{i}_b, {layer_grad_out}_zero, {layer_grad_out}_sign);\n")
     backw_cpp_items.append(f"\tstd::bitset<{in_size}> {layer_grad_out}_zero;\n")
     backw_cpp_items.append(f"\tstd::bitset<{in_size}> {layer_grad_out}_sign;\n")
 
@@ -116,10 +126,13 @@ total_file += "\n"
 if DO_TRAIN:
     total_file += "// run the neural network\n"
     total_file += f"inline void _backwNN(std::bitset<{IN_SIZE}> nn_input, std::bitset<{OUT_SIZE}> expected_nn_output, {backw_signature_cpp}) {{\n"
-    total_file += "\t// define bin mats to store the binarized matricies\n"
-    total_file += f"{defn_bmat_cpp}\n"
-    total_file += "\t// store the binarized matricies (this is done because presumably the weights have been updated previously)\n"
-    total_file += f"{set_bmat_cpp}\n"
+    
+    if not NO_BIT_RECALC:
+        total_file += "\t// define bin mats to store the binarized matricies\n"
+        total_file += f"{defn_bmat_cpp}\n"
+        total_file += "\t// store the binarized matricies (this is done because presumably the weights have been updated previously)\n"
+        total_file += f"{set_bmat_cpp}\n"
+    
     total_file += "\t// run the NN (we still need the layer inputs)\n"
     total_file += runnn_cpp
     total_file += "\n"
@@ -128,13 +141,14 @@ if DO_TRAIN:
     total_file += f"\tstd::bitset<{OUT_SIZE}> errors = lin{NLAY-1}_out ^ expected_nn_output;\n"
     total_file += f"\tif (errors.count() == 0) return;\n"
 
-    total_file += f"\tstd::cout << \"expected: \" << expected_nn_output << \"\\n\";\n"
-    total_file += f"\tstd::cout << \"got: \" << lin{NLAY-1}_out << \"\\n\";\n"
-    total_file += f"\tstd::cout << \"error: \" << errors << \"\\n\";\n"
+    if not PERF_MODE: total_file += f"\tstd::cout << \"expected: \" << expected_nn_output << \"\\n\";\n"
+    if not PERF_MODE: total_file += f"\tstd::cout << \"got: \" << lin{NLAY-1}_out << \"\\n\";\n"
+    if not PERF_MODE: total_file += f"\tstd::cout << \"error: \" << errors << \"\\n\";\n"
     total_file += f"\tout_grad_zero = ~errors;\n"
-    total_file += f"\tout_grad_sign = ~((~lin{NLAY-1}_out) & expected_nn_output);\n"
-    total_file += f"\tstd::cout << \"out_grad_zero: \" << out_grad_zero << \"\\n\";\n"
-    total_file += f"\tstd::cout << \"out_grad_sign: \" << out_grad_sign << \"\\n\";\n"
+    # total_file += f"\tout_grad_sign = ~((~lin{NLAY-1}_out) & expected_nn_output);\n"
+    total_file += f"\tout_grad_sign = lin{NLAY-1}_out | (~expected_nn_output);\n"
+    if not PERF_MODE: total_file += f"\tstd::cout << \"out_grad_zero: \" << out_grad_zero << \"\\n\";\n"
+    if not PERF_MODE: total_file += f"\tstd::cout << \"out_grad_sign: \" << out_grad_sign << \"\\n\";\n"
     total_file += f"{backw_cpp}\n"
     total_file += "}\n"
     total_file += "\n"
@@ -164,12 +178,15 @@ if DO_TRAIN or DO_TEST:
     total_file += f"\tstd::bitset<{OUT_SIZE}> out_vals[] = {{{', '.join(map(lambda x: '0b'+''.join(map(str, map(int, x))), ys))}}};\n"
 
 if DO_TRAIN:
+    if NO_BIT_RECALC:
+        total_file += "\t// set the bits initially\n"
+        total_file += f"{set_bmat_cpp}"
     total_file += "\t// training\n"
     total_file += f"\n"
     total_file += f"\tsize_t N_EPOCH = {N_EPOCH};\n"
     total_file += f"\tfor (size_t epoch = 0; epoch < N_EPOCH; epoch++){{\n"
     total_file += f"\t\tsize_t i = rand() % {len(xs)};\n"
-    total_file += f"\t\tstd::cout << \"ep: \" << epoch << \" (i=\" << i << \")\" << \"\\n\";\n"
+    if not PERF_MODE: total_file += f"\t\tstd::cout << \"ep: \" << epoch << \" (i=\" << i << \")\" << \"\\n\";\n"
     total_file += f"\t\t_backwNN(in_vals[i], out_vals[i], {backw_call_signature_cpp});\n"
     total_file += "\t}\n"
 

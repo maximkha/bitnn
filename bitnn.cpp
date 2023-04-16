@@ -3,7 +3,7 @@
 
 #include <string>   // std::string
 #include <bitset>   // std::bitset
-// #include <iostream>
+#define UPDATE_IN_BACKW
 
 // https://codereview.stackexchange.com/questions/115869/saturated-signed-addition
 int saturating_add(int8_t x , int8_t y) { 
@@ -43,7 +43,7 @@ std::bitset<MAT_HEIGHT> matStepBitVecMul(std::bitset<MAT_WIDTH> mat[MAT_HEIGHT],
 }
 
 template <size_t MAT_WIDTH, size_t MAT_HEIGHT>
-std::bitset<MAT_HEIGHT> matStepBitVecMulBias(std::bitset<MAT_WIDTH> mat[MAT_HEIGHT], std::bitset<MAT_HEIGHT> bias, std::bitset<MAT_WIDTH> vec)
+std::bitset<MAT_HEIGHT> matStepBitVecMulBias(std::bitset<MAT_WIDTH> mat[MAT_HEIGHT], std::bitset<MAT_HEIGHT>& bias, std::bitset<MAT_WIDTH>& vec)
 {
     std::bitset<MAT_HEIGHT> bitset;
 
@@ -88,7 +88,7 @@ void random1DInt8Mat(int8_t mat[MAT_WIDTH])
     }
 }
 
-
+#pragma region BROKEN_BBSMV
 // TODO: fix this
 /* 
 template <size_t MAT_WIDTH, size_t MAT_HEIGHT>
@@ -144,9 +144,10 @@ void backwardBitStepMV(std::bitset<MAT_WIDTH> bmat[MAT_HEIGHT], std::bitset<MAT_
     }
 }
 */
+#pragma endregion BROKEN_BBSMV
 
 template <size_t MAT_WIDTH, size_t MAT_HEIGHT>
-void backwardBitStepMVBias(std::bitset<MAT_WIDTH> bmat[MAT_HEIGHT], std::bitset<MAT_WIDTH> inputs, std::bitset<MAT_HEIGHT> grad_zero, std::bitset<MAT_HEIGHT> grad_sign, int8_t raw_mat[MAT_HEIGHT][MAT_WIDTH], int8_t raw_bias[MAT_HEIGHT], std::bitset<MAT_WIDTH>& new_grad_zero, std::bitset<MAT_WIDTH>& new_grad_sign)
+void backwardBitStepMVBias(std::bitset<MAT_WIDTH> bmat[MAT_HEIGHT], std::bitset<MAT_HEIGHT>& bbias, std::bitset<MAT_WIDTH>& inputs, std::bitset<MAT_HEIGHT>& grad_zero, std::bitset<MAT_HEIGHT>& grad_sign, int8_t raw_mat[MAT_HEIGHT][MAT_WIDTH], int8_t raw_bias[MAT_HEIGHT], std::bitset<MAT_WIDTH>& new_grad_zero, std::bitset<MAT_WIDTH>& new_grad_sign)
 {
     // dloss/din = upstream_loss @ sign(mat.T)
     // dloss/dweights = last_xs.T @ upstream_loss
@@ -191,8 +192,23 @@ void backwardBitStepMVBias(std::bitset<MAT_WIDTH> bmat[MAT_HEIGHT], std::bitset<
             else transposedMatMulNegative[j]++;
 
             if (~inputs[j]) continue;
+
+            // update bit mat
+            #ifdef UPDATE_IN_BACKW
+            // crosses bound to positive: (raw_mat[i][j] == 0) && !cgradsign;
+            if ((raw_mat[i][j] == 0) && !cgradsign) bmat[i][j] = true;
+            // crosses bound to negative: (raw_mat[i][j] == 1) && cgradsign;
+            if ((raw_mat[i][j] == 1) && cgradsign) bmat[i][j] = false;
+            #endif
+
             raw_mat[i][j] = saturating_add(raw_mat[i][j], cgradsign ? -1 : 1);
         }
+
+        // update bit mat (bias)
+        #ifdef UPDATE_IN_BACKW
+        if ((raw_bias[i] == 0) && !cgradsign) bbias[i] = true;
+        if ((raw_bias[i] == 1) && cgradsign) bbias[i] = false;
+        #endif
 
         raw_bias[i] = saturating_add(raw_bias[i], cgradsign ? -1 : 1);
     }

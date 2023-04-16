@@ -1,0 +1,17 @@
+// WITHOUT UPDATE_IN_BACKW
+benchmarking ./test
+time                 2.145 s    (2.128 s .. 2.153 s)
+                     1.000 R²   (1.000 R² .. 1.000 R²)
+mean                 2.146 s    (2.144 s .. 2.148 s)
+std dev              2.676 ms   (2.080 ms .. 3.089 ms)
+variance introduced by outliers: 19% (moderately inflated)
+
+
+
+// With UPDATE_IN_BACKW
+benchmarking ./test
+time                 1.033 s    (1.028 s .. 1.036 s)
+                     1.000 R²   (1.000 R² .. 1.000 R²)
+mean                 1.029 s    (1.028 s .. 1.031 s)
+std dev              1.842 ms   (1.540 ms .. 2.013 ms)
+variance introduced by outliers: 19% (moderately inflated)
