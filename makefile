@@ -1,4 +1,4 @@
-HIGH_OPT="debug"
+HIGH_OPT="normal"
 
 run: clean test
 	./test > out

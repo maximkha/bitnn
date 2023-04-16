@@ -17,8 +17,8 @@ topo = [2, 8, 8, 1]
 xs = [[0,0],[0,1],[1,0],[1,1]]
 
 ys = [[0], [1], [1], [0]]
-N_EPOCH = 50_000_000
-# N_EPOCH = 500
+# N_EPOCH = 50_000_000
+N_EPOCH = 500
 
 # GENERATOR
 
@@ -48,10 +48,10 @@ for i in range(len(topo) - 1):
 
     # the actual weights
     # define weight int8
-    defn_mat_cpp += f"\tint8_t lin{i}_w[{out_size}][{in_size}];\n"
+    defn_mat_cpp += f"\tsigned_weight_t lin{i}_w[{out_size}][{in_size}];\n"
 
     # define bias int8
-    defn_mat_cpp += f"\tint8_t lin{i}_b[{out_size}];\n"
+    defn_mat_cpp += f"\tsigned_weight_t lin{i}_b[{out_size}];\n"
 
     # the binary weights
     # weight
@@ -72,8 +72,8 @@ for i in range(len(topo) - 1):
     runnn_signature_cpp += f"std::bitset<{in_size}> lin{i}_w_bits[{out_size}], std::bitset<{out_size}> lin{i}_b_bits, "
     runnn_call_signature_cpp += f"lin{i}_w_bits, lin{i}_b_bits, "
 
-    if NO_BIT_RECALC: backw_signature_cpp += f"int8_t lin{i}_w[{out_size}][{in_size}], int8_t lin{i}_b[{out_size}], std::bitset<{in_size}> lin{i}_w_bits[{out_size}], std::bitset<{out_size}>& lin{i}_b_bits, "
-    else: backw_signature_cpp += f"int8_t lin{i}_w[{out_size}][{in_size}], int8_t lin{i}_b[{out_size}], "
+    if NO_BIT_RECALC: backw_signature_cpp += f"signed_weight_t lin{i}_w[{out_size}][{in_size}], signed_weight_t lin{i}_b[{out_size}], std::bitset<{in_size}> lin{i}_w_bits[{out_size}], std::bitset<{out_size}>& lin{i}_b_bits, "
+    else: backw_signature_cpp += f"signed_weight_t lin{i}_w[{out_size}][{in_size}], signed_weight_t lin{i}_b[{out_size}], "
 
     if NO_BIT_RECALC: backw_call_signature_cpp += f"lin{i}_w, lin{i}_b, lin{i}_w_bits, lin{i}_b_bits, "
     else: backw_call_signature_cpp += f"lin{i}_w, lin{i}_b, "

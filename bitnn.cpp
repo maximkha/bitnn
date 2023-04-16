@@ -1,21 +1,32 @@
-// Bitnn
+// BitNN
 // maximkha
 
 #include <string>   // std::string
 #include <bitset>   // std::bitset
+#include <cstdlib> 
+#include <cstdint>
+
 #define UPDATE_IN_BACKW
+typedef int8_t signed_weight_t;
+// typedef int_fast8_t signed_weight_t;
+
+typedef uint8_t unsigned_weight_t;
+// typedef uint_fast8_t unsigned_weight_t;
+
+typedef size_t accum_size_t;
+// typedef uint_fast8_t accum_size_t;
 
 // https://codereview.stackexchange.com/questions/115869/saturated-signed-addition
-int saturating_add(int8_t x , int8_t y) { 
-    int8_t sum = (uint8_t) x + y;
-    int8_t w = (sizeof(int8_t) << 3) -1;
-    int8_t mask = (~(x ^ y) & (x ^ sum)) >> w;
-    int8_t max_min = (1 << w) ^ (sum >> w);
+int saturating_add(signed_weight_t x , signed_weight_t y) { 
+    signed_weight_t sum = (unsigned_weight_t) x + y;
+    signed_weight_t w = (sizeof(signed_weight_t) << 3) -1;
+    signed_weight_t mask = (~(x ^ y) & (x ^ sum)) >> w;
+    signed_weight_t max_min = (1 << w) ^ (sum >> w);
     return  (~mask & sum) + (mask & max_min);
 }
 
 template <size_t BIT_COUNT>
-std::bitset<BIT_COUNT> posBits(int8_t arr[BIT_COUNT])
+std::bitset<BIT_COUNT> posBits(signed_weight_t arr[BIT_COUNT])
 {
     std::bitset<BIT_COUNT> bitset;
     for (size_t i = 0; i < BIT_COUNT; i++)
@@ -33,8 +44,8 @@ std::bitset<MAT_HEIGHT> matStepBitVecMul(std::bitset<MAT_WIDTH> mat[MAT_HEIGHT],
 
     for (size_t i = 0; i < MAT_HEIGHT; i++)
     {
-        size_t pos_count = (vec & mat[i]).count();
-        size_t neg_count = (vec & (~mat[i])).count();
+        accum_size_t pos_count = (vec & mat[i]).count();
+        accum_size_t neg_count = (vec & (~mat[i])).count();
         
         bitset[i] = pos_count > neg_count;
     }
@@ -49,8 +60,8 @@ std::bitset<MAT_HEIGHT> matStepBitVecMulBias(std::bitset<MAT_WIDTH> mat[MAT_HEIG
 
     for (size_t i = 0; i < MAT_HEIGHT; i++)
     {
-        size_t pos_count = (vec & mat[i]).count() + (bias[i] ? 1 : 0);
-        size_t neg_count = (vec & (~mat[i])).count() + (bias[i] ? 0 : 1);
+        accum_size_t pos_count = (vec & mat[i]).count() + (bias[i] ? 1 : 0);
+        accum_size_t neg_count = (vec & (~mat[i])).count() + (bias[i] ? 0 : 1);
 
         bitset[i] = pos_count > neg_count;
     }
@@ -59,7 +70,7 @@ std::bitset<MAT_HEIGHT> matStepBitVecMulBias(std::bitset<MAT_WIDTH> mat[MAT_HEIG
 }
 
 template <size_t MAT_WIDTH, size_t MAT_HEIGHT>
-void toBinMat(int8_t arr[MAT_HEIGHT][MAT_WIDTH], std::bitset<MAT_WIDTH> out[MAT_HEIGHT])
+void toBinMat(signed_weight_t arr[MAT_HEIGHT][MAT_WIDTH], std::bitset<MAT_WIDTH> out[MAT_HEIGHT])
 {
     for (size_t i = 0; i < MAT_HEIGHT; i++)
     {
@@ -68,7 +79,7 @@ void toBinMat(int8_t arr[MAT_HEIGHT][MAT_WIDTH], std::bitset<MAT_WIDTH> out[MAT_
 }
 
 template <size_t MAT_WIDTH, size_t MAT_HEIGHT>
-void random2DInt8Mat(int8_t mat[MAT_HEIGHT][MAT_WIDTH])
+void random2DInt8Mat(signed_weight_t mat[MAT_HEIGHT][MAT_WIDTH])
 {
     for (size_t i = 0; i < MAT_HEIGHT; i++)
     {
@@ -80,7 +91,7 @@ void random2DInt8Mat(int8_t mat[MAT_HEIGHT][MAT_WIDTH])
 }
 
 template <size_t MAT_WIDTH>
-void random1DInt8Mat(int8_t mat[MAT_WIDTH])
+void random1DInt8Mat(signed_weight_t mat[MAT_WIDTH])
 {
     for (size_t i = 0; i < MAT_WIDTH; i++)
     {
@@ -147,7 +158,7 @@ void backwardBitStepMV(std::bitset<MAT_WIDTH> bmat[MAT_HEIGHT], std::bitset<MAT_
 #pragma endregion BROKEN_BBSMV
 
 template <size_t MAT_WIDTH, size_t MAT_HEIGHT>
-void backwardBitStepMVBias(std::bitset<MAT_WIDTH> bmat[MAT_HEIGHT], std::bitset<MAT_HEIGHT>& bbias, std::bitset<MAT_WIDTH>& inputs, std::bitset<MAT_HEIGHT>& grad_zero, std::bitset<MAT_HEIGHT>& grad_sign, int8_t raw_mat[MAT_HEIGHT][MAT_WIDTH], int8_t raw_bias[MAT_HEIGHT], std::bitset<MAT_WIDTH>& new_grad_zero, std::bitset<MAT_WIDTH>& new_grad_sign)
+void backwardBitStepMVBias(std::bitset<MAT_WIDTH> bmat[MAT_HEIGHT], std::bitset<MAT_HEIGHT>& bbias, std::bitset<MAT_WIDTH>& inputs, std::bitset<MAT_HEIGHT>& grad_zero, std::bitset<MAT_HEIGHT>& grad_sign, signed_weight_t raw_mat[MAT_HEIGHT][MAT_WIDTH], signed_weight_t raw_bias[MAT_HEIGHT], std::bitset<MAT_WIDTH>& new_grad_zero, std::bitset<MAT_WIDTH>& new_grad_sign)
 {
     // dloss/din = upstream_loss @ sign(mat.T)
     // dloss/dweights = last_xs.T @ upstream_loss
@@ -156,8 +167,8 @@ void backwardBitStepMVBias(std::bitset<MAT_WIDTH> bmat[MAT_HEIGHT], std::bitset<
     // dloss/dbias = [1] @ upstream_loss
 
     // maybe change the accumulator size
-    size_t transposedMatMulPositive[MAT_WIDTH];
-    size_t transposedMatMulNegative[MAT_WIDTH];
+    accum_size_t transposedMatMulPositive[MAT_WIDTH];
+    accum_size_t transposedMatMulNegative[MAT_WIDTH];
 
     // So painful :(
     for (size_t i = 0; i < MAT_WIDTH; i++)
