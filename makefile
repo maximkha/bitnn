@@ -1,7 +1,9 @@
-HIGH_OPT="fast"
+HIGH_OPT="debug"
 
 run: clean test
 	time ./test > out
+
+compile: clean test
 
 bench: clean test run
 	bench './test'

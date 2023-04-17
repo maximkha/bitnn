@@ -8,9 +8,11 @@
 #include <cstdint>
 
 #define UPDATE_IN_BACKW
-#define INV_P_VAL_FLIP_NEW_GRAD 4
-#define INV_P_VAL_FLIP_MAT 4
-#define INV_P_VAL_FLIP_BIAS 4    
+
+#define DENOM 100
+#define INV_P_VAL_FLIP_NEW_GRAD 8
+#define INV_P_VAL_FLIP_MAT 8
+#define INV_P_VAL_FLIP_BIAS 8    
 
 typedef int8_t signed_weight_t;
 // typedef int_fast8_t signed_weight_t;
@@ -301,7 +303,7 @@ void stochasticBackwardBitStepMVBias(std::bitset<MAT_WIDTH> bmat[MAT_HEIGHT], st
         {
             // Irregardless of input
 
-            bool flip_new_grad = ((rand() % INV_P_VAL_FLIP_NEW_GRAD) == 0);
+            bool flip_new_grad = ((rand() % DENOM) < INV_P_VAL_FLIP_NEW_GRAD);
             // std::cout << "flip_new_grad=" << flip_new_grad << "\n";
             if (matrow[j] != (!cgradsign)) {
                 // transposedMatMulPositive[j]++;
@@ -321,7 +323,7 @@ void stochasticBackwardBitStepMVBias(std::bitset<MAT_WIDTH> bmat[MAT_HEIGHT], st
 
             if (~inputs[j]) continue;
 
-            bool flip_bmat = ((rand() % INV_P_VAL_FLIP_MAT) == 0);
+            bool flip_bmat = ((rand() % DENOM) < INV_P_VAL_FLIP_MAT);
             // crosses bound to positive: (raw_mat[i][j] == 0) && !cgradsign;
             // if ((raw_mat[i][j] == 0) && !cgradsign) bmat[i][j] = true;
             if (!cgradsign)
@@ -346,7 +348,7 @@ void stochasticBackwardBitStepMVBias(std::bitset<MAT_WIDTH> bmat[MAT_HEIGHT], st
 
         // raw_bias[i] = saturating_add(raw_bias[i], cgradsign ? -1 : 1);
 
-        bool flip_bias = ((rand() % INV_P_VAL_FLIP_BIAS) == 0);
+        bool flip_bias = ((rand() % DENOM) < INV_P_VAL_FLIP_BIAS);
         if (!cgradsign)
         {
             // try to push towards true

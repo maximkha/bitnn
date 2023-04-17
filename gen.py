@@ -8,18 +8,26 @@ DO_DEBUG = False
 PERF_MODE = True
 STOCHASTIC = False
 # STOCHASTIC = True
+BETTER_RAND_INIT = True
+
+STOP_ON_LOW_TRAIN_ERROR = 0
+# STOP_ON_LOW_TRAIN_ERROR = False
 
 # NO_BIT_RECALC = False
 NO_BIT_RECALC = True
 
 if NO_BIT_RECALC: print("// WARNING!!! YOU WILL NEED TO RECOMPILE 'bitnn.cpp' WITH '#define UPDATE_IN_BACKW'")
 
-topo = [2, 8, 8, 1]
+# topo = [2, 128, 128, 1]
+topo = [2, 16, 1]
+# topo = [2, 128, 1]
+# topo = [2, 8, 8, 1]
 
 xs = [[0,0],[0,1],[1,0],[1,1]]
 
-ys = [[0], [1], [1], [0]]
-N_EPOCH = 50_000_000
+ys = [[0], [1], [0], [1]]
+N_EPOCH = 5_000_000
+# N_EPOCH = 50_000_000
 # N_EPOCH = 500
 
 # GENERATOR
@@ -119,7 +127,24 @@ total_file = ""
 total_file += "#include \"bitnn.cpp\"\n"
 total_file += "#include <iostream> // std::cout\n"
 total_file += "#include <bitset>   // std::bitset\n"
+if BETTER_RAND_INIT: total_file += "#include <unistd.h> // getpid()\n"
 total_file += "\n"
+
+if BETTER_RAND_INIT:
+    total_file += """// https://stackoverflow.com/questions/322938/recommended-way-to-initialize-srand
+unsigned long mix(unsigned long a, unsigned long b, unsigned long c)
+{
+    a=a-b;  a=a-c;  a=a^(c >> 13);
+    b=b-c;  b=b-a;  b=b^(a << 8);
+    c=c-a;  c=c-b;  c=c^(b >> 13);
+    a=a-b;  a=a-c;  a=a^(c >> 12);
+    b=b-c;  b=b-a;  b=b^(a << 16);
+    c=c-a;  c=c-b;  c=c^(b >> 5);
+    a=a-b;  a=a-c;  a=a^(c >> 3);
+    b=b-c;  b=b-a;  b=b^(a << 10);
+    c=c-a;  c=c-b;  c=c^(b >> 15);
+    return c;
+}\n"""
 
 total_file += "// run the neural network\n"
 total_file += f"inline std::bitset<{OUT_SIZE}> _runNN(std::bitset<{IN_SIZE}> nn_input, {runnn_signature_cpp}) {{\n"
@@ -130,7 +155,10 @@ total_file += "\n"
 
 if DO_TRAIN:
     total_file += "// run the neural network\n"
-    total_file += f"inline void _backwNN(std::bitset<{IN_SIZE}> nn_input, std::bitset<{OUT_SIZE}> expected_nn_output, {backw_signature_cpp}) {{\n"
+
+    if type(STOP_ON_LOW_TRAIN_ERROR) is int:
+        total_file += f"inline bool _backwNN(std::bitset<{IN_SIZE}> nn_input, std::bitset<{OUT_SIZE}> expected_nn_output, {backw_signature_cpp}) {{\n"
+    else: total_file += f"inline void _backwNN(std::bitset<{IN_SIZE}> nn_input, std::bitset<{OUT_SIZE}> expected_nn_output, {backw_signature_cpp}) {{\n"
     
     if not NO_BIT_RECALC:
         total_file += "\t// define bin mats to store the binarized matricies\n"
@@ -144,7 +172,10 @@ if DO_TRAIN:
     total_file += f"\tstd::bitset<{OUT_SIZE}> out_grad_zero;\n"
     total_file += f"\tstd::bitset<{OUT_SIZE}> out_grad_sign;\n"
     total_file += f"\tstd::bitset<{OUT_SIZE}> errors = lin{NLAY-1}_out ^ expected_nn_output;\n"
-    total_file += f"\tif (errors.count() == 0) return;\n"
+    
+    if type(STOP_ON_LOW_TRAIN_ERROR) is int:
+        total_file += f"\tif (errors.count() == 0) return true;\n"
+    else: total_file += f"\tif (errors.count() == 0) return;\n"
 
     if not PERF_MODE: total_file += f"\tstd::cout << \"expected: \" << expected_nn_output << \"\\n\";\n"
     if not PERF_MODE: total_file += f"\tstd::cout << \"got: \" << lin{NLAY-1}_out << \"\\n\";\n"
@@ -154,13 +185,18 @@ if DO_TRAIN:
     if not PERF_MODE: total_file += f"\tstd::cout << \"out_grad_zero: \" << out_grad_zero << \"\\n\";\n"
     if not PERF_MODE: total_file += f"\tstd::cout << \"out_grad_sign: \" << out_grad_sign << \"\\n\";\n"
     total_file += f"{backw_cpp}\n"
+    if type(STOP_ON_LOW_TRAIN_ERROR) is int:
+        total_file += "\treturn false;\n"
     total_file += "}\n"
     total_file += "\n"
 
 total_file += "// Autogenned infra for running the NN\n"
 total_file += "int main(int argc, char const *argv[]){\n"
-total_file += "\t// good srand\n"
-total_file += "\tsrand(time(NULL));\n"
+if BETTER_RAND_INIT: 
+    total_file += "\t// good srand\n"
+    total_file += "\tsrand(mix(clock(), time(NULL), getpid()));\n"
+else:
+    total_file += "\tsrand(time(NULL));\n"
 
 total_file += "\t// define the necessary int8 buffers for the nn mats\n"
 total_file += f"{defn_mat_cpp}\n"
@@ -182,6 +218,10 @@ if DO_TRAIN or DO_TEST:
     total_file += f"\tstd::bitset<{OUT_SIZE}> out_vals[] = {{{', '.join(map(lambda x: '0b'+''.join(map(str, map(int, x))), ys))}}};\n"
 
 if DO_TRAIN:
+    if type(STOP_ON_LOW_TRAIN_ERROR) is int:
+        total_file += f"\tstd::bitset<{len(ys)}> all_errors;\n"
+        total_file += f"\tfor (size_t i = 0; i < {len(ys)}; i++) all_errors[i] = 1;\n"
+
     if NO_BIT_RECALC:
         total_file += "\t// set the bits initially\n"
         total_file += f"{set_bmat_cpp}"
@@ -191,7 +231,10 @@ if DO_TRAIN:
     total_file += f"\tfor (size_t epoch = 0; epoch < N_EPOCH; epoch++){{\n"
     total_file += f"\t\tsize_t i = rand() % {len(xs)};\n"
     if not PERF_MODE: total_file += f"\t\tstd::cout << \"ep: \" << epoch << \" (i=\" << i << \")\" << \"\\n\";\n"
-    total_file += f"\t\t_backwNN(in_vals[i], out_vals[i], {backw_call_signature_cpp});\n"
+    if type(STOP_ON_LOW_TRAIN_ERROR) is int:
+        total_file += f"\t\tall_errors[i] = _backwNN(in_vals[i], out_vals[i], {backw_call_signature_cpp});\n"
+        total_file += f"\t\tif (all_errors.count() <= {STOP_ON_LOW_TRAIN_ERROR}) break;\n"
+    else: total_file += f"\t\t_backwNN(in_vals[i], out_vals[i], {backw_call_signature_cpp});\n"
     total_file += "\t}\n"
 
     if not STOCHASTIC: 
