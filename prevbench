@@ -15,3 +15,12 @@ time                 1.033 s    (1.028 s .. 1.036 s)
 mean                 1.029 s    (1.028 s .. 1.031 s)
 std dev              1.842 ms   (1.540 ms .. 2.013 ms)
 variance introduced by outliers: 19% (moderately inflated)
+
+// With better g++ opts
+bench './test'
+benchmarking ./test
+time                 1.005 s    (NaN s .. 1.035 s)
+                     1.000 R²   (1.000 R² .. 1.000 R²)
+mean                 994.0 ms   (990.1 ms .. 1.000 s)
+std dev              5.876 ms   (295.9 μs .. 7.604 ms)
+variance introduced by outliers: 19% (moderately inflated)

@@ -6,6 +6,8 @@ DO_TRAIN = True
 DO_TEST = True
 DO_DEBUG = False
 PERF_MODE = True
+STOCHASTIC = False
+# STOCHASTIC = True
 
 # NO_BIT_RECALC = False
 NO_BIT_RECALC = True
@@ -17,8 +19,8 @@ topo = [2, 8, 8, 1]
 xs = [[0,0],[0,1],[1,0],[1,1]]
 
 ys = [[0], [1], [1], [0]]
-# N_EPOCH = 50_000_000
-N_EPOCH = 500
+N_EPOCH = 50_000_000
+# N_EPOCH = 500
 
 # GENERATOR
 
@@ -72,14 +74,17 @@ for i in range(len(topo) - 1):
     runnn_signature_cpp += f"std::bitset<{in_size}> lin{i}_w_bits[{out_size}], std::bitset<{out_size}> lin{i}_b_bits, "
     runnn_call_signature_cpp += f"lin{i}_w_bits, lin{i}_b_bits, "
 
-    if NO_BIT_RECALC: backw_signature_cpp += f"signed_weight_t lin{i}_w[{out_size}][{in_size}], signed_weight_t lin{i}_b[{out_size}], std::bitset<{in_size}> lin{i}_w_bits[{out_size}], std::bitset<{out_size}>& lin{i}_b_bits, "
+    if STOCHASTIC: backw_signature_cpp += f"std::bitset<{in_size}> lin{i}_w_bits[{out_size}], std::bitset<{out_size}>& lin{i}_b_bits, "
+    elif NO_BIT_RECALC: backw_signature_cpp += f"signed_weight_t lin{i}_w[{out_size}][{in_size}], signed_weight_t lin{i}_b[{out_size}], std::bitset<{in_size}> lin{i}_w_bits[{out_size}], std::bitset<{out_size}>& lin{i}_b_bits, "
     else: backw_signature_cpp += f"signed_weight_t lin{i}_w[{out_size}][{in_size}], signed_weight_t lin{i}_b[{out_size}], "
 
-    if NO_BIT_RECALC: backw_call_signature_cpp += f"lin{i}_w, lin{i}_b, lin{i}_w_bits, lin{i}_b_bits, "
+    if STOCHASTIC: backw_call_signature_cpp += f"lin{i}_w_bits, lin{i}_b_bits, "
+    elif NO_BIT_RECALC: backw_call_signature_cpp += f"lin{i}_w, lin{i}_b, lin{i}_w_bits, lin{i}_b_bits, "
     else: backw_call_signature_cpp += f"lin{i}_w, lin{i}_b, "
 
     # this will be reversed so do this backwards
-    backw_cpp_items.append(f"\tbackwardBitStepMVBias<{in_size}, {out_size}>(lin{i}_w_bits, lin{i}_b_bits, {layer_in}, {layer_grad_in}_zero, {layer_grad_in}_sign, lin{i}_w, lin{i}_b, {layer_grad_out}_zero, {layer_grad_out}_sign);\n")
+    if STOCHASTIC: backw_cpp_items.append(f"\tstochasticBackwardBitStepMVBias<{in_size}, {out_size}>(lin{i}_w_bits, lin{i}_b_bits, {layer_in}, {layer_grad_in}_zero, {layer_grad_in}_sign, {layer_grad_out}_zero, {layer_grad_out}_sign);\n")
+    else: backw_cpp_items.append(f"\tbackwardBitStepMVBias<{in_size}, {out_size}>(lin{i}_w_bits, lin{i}_b_bits, {layer_in}, {layer_grad_in}_zero, {layer_grad_in}_sign, lin{i}_w, lin{i}_b, {layer_grad_out}_zero, {layer_grad_out}_sign);\n")
     backw_cpp_items.append(f"\tstd::bitset<{in_size}> {layer_grad_out}_zero;\n")
     backw_cpp_items.append(f"\tstd::bitset<{in_size}> {layer_grad_out}_sign;\n")
 
@@ -145,7 +150,6 @@ if DO_TRAIN:
     if not PERF_MODE: total_file += f"\tstd::cout << \"got: \" << lin{NLAY-1}_out << \"\\n\";\n"
     if not PERF_MODE: total_file += f"\tstd::cout << \"error: \" << errors << \"\\n\";\n"
     total_file += f"\tout_grad_zero = ~errors;\n"
-    # total_file += f"\tout_grad_sign = ~((~lin{NLAY-1}_out) & expected_nn_output);\n"
     total_file += f"\tout_grad_sign = lin{NLAY-1}_out | (~expected_nn_output);\n"
     if not PERF_MODE: total_file += f"\tstd::cout << \"out_grad_zero: \" << out_grad_zero << \"\\n\";\n"
     if not PERF_MODE: total_file += f"\tstd::cout << \"out_grad_sign: \" << out_grad_sign << \"\\n\";\n"
@@ -156,7 +160,7 @@ if DO_TRAIN:
 total_file += "// Autogenned infra for running the NN\n"
 total_file += "int main(int argc, char const *argv[]){\n"
 total_file += "\t// good srand\n"
-total_file += "\tsrand(123);\n"
+total_file += "\tsrand(time(NULL));\n"
 
 total_file += "\t// define the necessary int8 buffers for the nn mats\n"
 total_file += f"{defn_mat_cpp}\n"
@@ -190,9 +194,9 @@ if DO_TRAIN:
     total_file += f"\t\t_backwNN(in_vals[i], out_vals[i], {backw_call_signature_cpp});\n"
     total_file += "\t}\n"
 
-    total_file += "\t// store the binarized matricies\n"
-    total_file += f"{set_bmat_cpp}\n"
-    total_file += "\n\n"
+    if not STOCHASTIC: 
+        total_file += "\t// store the binarized matricies\n"
+        total_file += f"{set_bmat_cpp}\n"
 
 if DO_TEST:
     total_file += "\t// test the nn\n"

@@ -1,7 +1,7 @@
-HIGH_OPT="normal"
+HIGH_OPT="fast"
 
 run: clean test
-	./test > out
+	time ./test > out
 
 bench: clean test run
 	bench './test'

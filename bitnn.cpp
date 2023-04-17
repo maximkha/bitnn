@@ -4,9 +4,14 @@
 #include <string>   // std::string
 #include <bitset>   // std::bitset
 #include <cstdlib> 
+#include <iostream> 
 #include <cstdint>
 
 #define UPDATE_IN_BACKW
+#define INV_P_VAL_FLIP_NEW_GRAD 4
+#define INV_P_VAL_FLIP_MAT 4
+#define INV_P_VAL_FLIP_BIAS 4    
+
 typedef int8_t signed_weight_t;
 // typedef int_fast8_t signed_weight_t;
 
@@ -237,5 +242,119 @@ void backwardBitStepMVBias(std::bitset<MAT_WIDTH> bmat[MAT_HEIGHT], std::bitset<
 
         // TODO: check if the if above is faster or slower
         new_grad_sign[j] = transposedMatMulPositive[j] > transposedMatMulNegative[j];
+    }
+}
+
+// nudge false
+// randb, value, new_value
+// 0      0      0
+// 1      0      0
+// 0      1      1
+// 1      1      0
+// (~randb) && value
+
+// nudge true
+// randb, value, new_value
+// 0      0      0
+// 1      0      1
+// 0      1      1
+// 1      1      1
+// rand_b || value
+
+template <size_t MAT_WIDTH, size_t MAT_HEIGHT>
+void stochasticBackwardBitStepMVBias(std::bitset<MAT_WIDTH> bmat[MAT_HEIGHT], std::bitset<MAT_HEIGHT>& bbias, std::bitset<MAT_WIDTH>& inputs, std::bitset<MAT_HEIGHT>& grad_zero, std::bitset<MAT_HEIGHT>& grad_sign, std::bitset<MAT_WIDTH>& new_grad_zero, std::bitset<MAT_WIDTH>& new_grad_sign)
+{
+    // dloss/din = upstream_loss @ sign(mat.T)
+    // dloss/dweights = last_xs.T @ upstream_loss
+    
+    // A bias essentially acts like a constant 1 input
+    // dloss/dbias = [1] @ upstream_loss
+
+    for (size_t i = 0; i < MAT_WIDTH; i++)
+    {
+        // Doesn't matter that this is a previous value, grads are correlated as seen by the direct backprop method
+        new_grad_zero[i] = 1;
+        // Actually this is across different datapoints, so we should probably clear this
+        new_grad_sign[i] = 0;
+    }
+
+    for (size_t i = 0; i < MAT_HEIGHT; i++)
+    {
+        // dloss/dweights
+        // std::cout << "AYO " << "grad_zero= " << grad_zero << " inputs= " << inputs << "\n";
+        if (grad_zero[i]) continue;
+
+        bool cgradsign = grad_sign[i];
+        // std::cout << "!cgradsign=" << !cgradsign << "\n";
+
+        //Interleaved matmul code for dloss/din
+
+        // To not do two different array iterations, and a transpose,
+        // the backprop *won't use* popcount, because we have to popcount 
+        // across the transposed version of the weight mat
+
+        // TODO: check if there's a better way of doing this
+        // ~cgradsign, because multiplying by a positive should not change the sign
+        std::bitset<MAT_WIDTH> matrow = bmat[i];
+
+        for (size_t j = 0; j < MAT_WIDTH; j++)
+        {
+            // Irregardless of input
+
+            bool flip_new_grad = ((rand() % INV_P_VAL_FLIP_NEW_GRAD) == 0);
+            // std::cout << "flip_new_grad=" << flip_new_grad << "\n";
+            if (matrow[j] != (!cgradsign)) {
+                // transposedMatMulPositive[j]++;
+                // try to push towards true
+
+                new_grad_sign[j] = flip_new_grad || new_grad_sign[j];
+            }
+            else {
+                // transposedMatMulNegative[j]++;
+                // try to push towards false
+
+                new_grad_sign[j] = (~flip_new_grad) && new_grad_sign[j];
+            }
+
+            //TODO: maybe optimize this
+            if (flip_new_grad) new_grad_zero[j] = 0;
+
+            if (~inputs[j]) continue;
+
+            bool flip_bmat = ((rand() % INV_P_VAL_FLIP_MAT) == 0);
+            // crosses bound to positive: (raw_mat[i][j] == 0) && !cgradsign;
+            // if ((raw_mat[i][j] == 0) && !cgradsign) bmat[i][j] = true;
+            if (!cgradsign)
+            {
+                // try to push towards true
+                bmat[i][j] = flip_bmat || bmat[i][j];
+            }
+            else {
+                // try to push towards false
+                bmat[i][j] = (~flip_bmat) && bmat[i][j];
+            }
+
+            // crosses bound to negative: (raw_mat[i][j] == 1) && cgradsign;
+            // if ((raw_mat[i][j] == 1) && cgradsign) bmat[i][j] = false;
+
+            // raw_mat[i][j] = saturating_add(raw_mat[i][j], cgradsign ? -1 : 1);
+        }
+
+        // update bit mat (bias)
+        // if ((raw_bias[i] == 0) && !cgradsign) bbias[i] = true;
+        // if ((raw_bias[i] == 1) && cgradsign) bbias[i] = false;
+
+        // raw_bias[i] = saturating_add(raw_bias[i], cgradsign ? -1 : 1);
+
+        bool flip_bias = ((rand() % INV_P_VAL_FLIP_BIAS) == 0);
+        if (!cgradsign)
+        {
+            // try to push towards true
+            bbias[i] = flip_bias || bbias[i];
+        }
+        else {
+            // try to push towards false
+            bbias[i] = (~flip_bias) && bbias[i];
+        }
     }
 }
